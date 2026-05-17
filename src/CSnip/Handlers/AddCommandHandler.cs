@@ -1,4 +1,5 @@
 using System.CommandLine;
+using CSnip.Abstractions;
 using CSnip.Models;
 using CSnip.Persistence;
 using Spectre.Console;
@@ -7,6 +8,7 @@ namespace CSnip.Handlers;
 
 public class AddCommandHandler(
     IAnsiConsole console,
+    ILineReader lineReader,
     ISnippetRepository repository) : ICliCommandHandler
 {
     public class Symbols : ICommandSymbols
@@ -40,16 +42,14 @@ public class AddCommandHandler(
 
         if (string.IsNullOrWhiteSpace(command))
         {
-            command = console.Prompt(
-                new TextPrompt<string>("Command:"));
+            console.Markup("[blue]command[/] [red](required)[/]: ");
+            command = lineReader.ReadLine() ?? string.Empty;
 
-            description = console.Prompt(
-                new TextPrompt<string>("Description:")
-                    .AllowEmpty());
+            console.Markup("[blue]description[/]: ");
+            description = lineReader.ReadLine() ?? string.Empty;
 
-            var tagsInput = console.Prompt(
-                new TextPrompt<string>("Tags (comma-separated):")
-                    .AllowEmpty());
+            console.Markup("[blue]tags[/] [dim](comma-separated)[/]: ");
+            var tagsInput = lineReader.ReadLine() ?? string.Empty;
 
             tags = tagsInput
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

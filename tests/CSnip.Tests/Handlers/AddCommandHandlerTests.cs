@@ -1,12 +1,11 @@
 using System.CommandLine;
 using AwesomeAssertions;
+using CSnip.Abstractions;
 using CSnip.Handlers;
 using CSnip.Models;
 using CSnip.Persistence;
 using Moq;
 using Moq.AutoMock;
-using Spectre.Console;
-using Spectre.Console.Testing;
 
 namespace CSnip.Tests.Handlers;
 
@@ -28,6 +27,12 @@ public class AddCommandHandlerTests
         foreach (var arg in symbols.Arguments) command.Add(arg);
         foreach (var opt in symbols.Options) command.Add(opt);
         return command.Parse(args);
+    }
+
+    private void SetupLineReader(params string?[] lines)
+    {
+        var seq = _mocker.GetMock<ILineReader>().SetupSequence(r => r.ReadLine());
+        foreach (var line in lines) seq.Returns(line);
     }
 
     [Test]
@@ -71,11 +76,7 @@ public class AddCommandHandlerTests
     [Test]
     public async Task HandleAsync_NoArgs_PromptsForAllFieldsAndSavesSnippet()
     {
-        var console = new TestConsole();
-        console.Input.PushTextWithEnter("git status");
-        console.Input.PushTextWithEnter("Check repo status");
-        console.Input.PushTextWithEnter("git, vcs");
-        _mocker.Use<IAnsiConsole>(console);
+        SetupLineReader("git status", "Check repo status", "git, vcs");
 
         var sut = _mocker.CreateInstance<AddCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult(), CancellationToken.None);
@@ -93,11 +94,7 @@ public class AddCommandHandlerTests
     [Test]
     public async Task HandleAsync_NoArgs_EmptyOptionalFields_SavesWithNullDescriptionAndEmptyTags()
     {
-        var console = new TestConsole();
-        console.Input.PushTextWithEnter("git status");
-        console.Input.PushTextWithEnter("");
-        console.Input.PushTextWithEnter("");
-        _mocker.Use<IAnsiConsole>(console);
+        SetupLineReader("git status", "", "");
 
         var sut = _mocker.CreateInstance<AddCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult(), CancellationToken.None);
@@ -115,11 +112,7 @@ public class AddCommandHandlerTests
     [Test]
     public async Task HandleAsync_NoArgs_SingleTag_SavesSnippetWithSingleTag()
     {
-        var console = new TestConsole();
-        console.Input.PushTextWithEnter("docker ps");
-        console.Input.PushTextWithEnter("List running containers");
-        console.Input.PushTextWithEnter("docker");
-        _mocker.Use<IAnsiConsole>(console);
+        SetupLineReader("docker ps", "List running containers", "docker");
 
         var sut = _mocker.CreateInstance<AddCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult(), CancellationToken.None);

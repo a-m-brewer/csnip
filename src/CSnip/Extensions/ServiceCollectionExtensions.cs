@@ -1,3 +1,4 @@
+using CSnip.Abstractions;
 using CSnip.Handlers;
 using CSnip.Models.Settings;
 using CSnip.Persistence;
@@ -10,6 +11,7 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddCommandHandlers(this IServiceCollection services)
     {
+        services.AddSingleton<ILineReader, ConsoleLineReader>();
         services.AddSingleton<IFileSystem, PhysicalFileSystem>();
         services.AddSingleton<ISnippetRepository, SnippetRepository>();
         services.AddOptions<StoreSettings>();
