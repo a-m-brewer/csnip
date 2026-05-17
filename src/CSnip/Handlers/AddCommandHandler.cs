@@ -13,42 +13,55 @@ public class AddCommandHandler(
     {
         public IReadOnlyList<Argument> Arguments { get; } = [Command];
         public IReadOnlyList<Option> Options { get; } = [Description, Tags];
-        
-        public static Argument<string> Command = new("command")
+
+        public static readonly Argument<string?> Command = new("command")
         {
-            Description = "Command Snippet to save to the database",
-            Validators =
-            {
-                r =>
-                {
-                    var val = r.GetValueOrDefault<string>();
-                    if (string.IsNullOrWhiteSpace(val))
-                    {
-                        r.AddError("Snippet cannot be empty.");
-                    }
-                }
-            }
+            Description = "Command snippet to save (omit to be prompted interactively)",
+            Arity = ArgumentArity.ZeroOrOne,
         };
-        
-        public static Option<string> Description = new("--description", "-d")
+
+        public static readonly Option<string> Description = new("--description", "-d")
         {
             Description = "Description of the command snippet",
         };
 
-        public static Option<string[]> Tags = new("--tags", "-t")
+        public static readonly Option<string[]> Tags = new("--tags", "-t")
         {
             Description = "Tags of the command snippet",
             Arity = ArgumentArity.ZeroOrMore,
         };
     }
-    
+
     public async Task<int> HandleAsync(ParseResult result, CancellationToken cancellationToken)
     {
-        var command = result.GetRequiredValue(Symbols.Command);
+        var command = result.GetValue(Symbols.Command);
         var description = result.GetValue(Symbols.Description);
-        var tags = result.GetValue(Symbols.Tags) ?? [];
+        var tags = result.GetValue(Symbols.Tags);
 
-        var snippet = new Snippet(command, description, tags);
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            command = console.Prompt(
+                new TextPrompt<string>("Command:"));
+
+            description = console.Prompt(
+                new TextPrompt<string>("Description:")
+                    .AllowEmpty());
+
+            var tagsInput = console.Prompt(
+                new TextPrompt<string>("Tags (comma-separated):")
+                    .AllowEmpty());
+
+            tags = tagsInput
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            console.MarkupLine("[red]Command cannot be empty.[/]");
+            return 1;
+        }
+
+        var snippet = new Snippet(command, string.IsNullOrWhiteSpace(description) ? null : description, tags ?? []);
         await repository.AddAsync(snippet, cancellationToken);
 
         console.MarkupLine("[green]Snippet saved![/]");
