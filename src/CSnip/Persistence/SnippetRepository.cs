@@ -16,6 +16,11 @@ public class SnippetRepository(IFileSystem fileSystem, IOptions<StoreSettings> o
         await SaveAsync(snippets, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Snippet>> GetAllAsync(CancellationToken cancellationToken)
+    {
+        return await LoadAsync(cancellationToken);
+    }
+
     private async Task<List<Snippet>> LoadAsync(CancellationToken cancellationToken)
     {
         if (!fileSystem.FileExists(StorePath))

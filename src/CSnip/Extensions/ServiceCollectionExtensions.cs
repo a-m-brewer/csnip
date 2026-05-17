@@ -1,6 +1,7 @@
 using CSnip.Handlers;
 using CSnip.Models.Settings;
 using CSnip.Persistence;
+using CSnip.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CSnip.Extensions;
@@ -12,6 +13,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileSystem, PhysicalFileSystem>();
         services.AddSingleton<ISnippetRepository, SnippetRepository>();
         services.AddOptions<StoreSettings>();
+
+        services.AddTransient<ITemplateService, TemplateService>();
+        services.AddTransient<ISnippetPromptService, SpectreSnippetPromptService>();
+        services.AddTransient<ITemplatePromptService, SpectreTemplatePromptService>();
+        services.AddTransient<ISnippetSelectionOrchestrator, SnippetSelectionOrchestrator>();
 
         services.Scan(s => s.FromAssemblyOf<ICliCommandHandler>()
             .AddClasses(c => c.AssignableTo<ICliCommandHandler>())

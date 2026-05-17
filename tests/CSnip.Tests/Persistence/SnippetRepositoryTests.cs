@@ -104,6 +104,42 @@ public class SnippetRepositoryTests
             .Verify(f => f.CreateDirectory(It.IsAny<string>()), Times.Once);
     }
 
+    [Test]
+    public async Task GetAllAsync_NoExistingFile_ReturnsEmptyList()
+    {
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(false);
+
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+        var result = await sut.GetAllAsync(CancellationToken.None);
+
+        result.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task GetAllAsync_ExistingFile_ReturnsAllSnippets()
+    {
+        var snippets = new List<Snippet>
+        {
+            new("git status", "Check status", ["git"]),
+            new("docker ps", null, ["docker"])
+        };
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(true);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.OpenRead(StorePath))
+            .Returns(SnippetsToStream(snippets));
+
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+        var result = await sut.GetAllAsync(CancellationToken.None);
+
+        result.Should().HaveCount(2);
+        result.Should().ContainEquivalentOf(snippets[0]);
+        result.Should().ContainEquivalentOf(snippets[1]);
+    }
+
     private static MemoryStream SnippetsToStream(List<Snippet> snippets)
     {
         var json = JsonSerializer.Serialize(snippets, SnippetJsonContext.Default.ListSnippet);
