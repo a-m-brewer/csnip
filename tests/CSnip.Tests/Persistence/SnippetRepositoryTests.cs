@@ -1,0 +1,119 @@
+using System.Text;
+using System.Text.Json;
+using AwesomeAssertions;
+using CSnip.Models;
+using CSnip.Models.Settings;
+using CSnip.Persistence;
+using Microsoft.Extensions.Options;
+using Moq;
+using Moq.AutoMock;
+
+namespace CSnip.Tests.Persistence;
+
+[TestFixture]
+public class SnippetRepositoryTests
+{
+    private AutoMocker _mocker = null!;
+    private const string StorePath = "/fake/csnip/snippets.json";
+
+    [SetUp]
+    public void SetUp()
+    {
+        _mocker = new AutoMocker();
+        _mocker.GetMock<IOptions<StoreSettings>>()
+            .Setup(o => o.Value)
+            .Returns(new StoreSettings { SnippetsPath = StorePath });
+    }
+
+    [Test]
+    public async Task AddAsync_NoExistingFile_WritesSnippetToNewFile()
+    {
+        // Arrange
+        var writeStream = new NonDisposableMemoryStream();
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(false);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.Create(StorePath))
+            .Returns(writeStream);
+
+        var snippet = new Snippet("git status", "Check repo status", ["git"]);
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+
+        // Act
+        await sut.AddAsync(snippet, CancellationToken.None);
+
+        // Assert
+        writeStream.Position = 0;
+        var saved = await JsonSerializer.DeserializeAsync(writeStream, SnippetJsonContext.Default.ListSnippet);
+        saved.Should().HaveCount(1);
+        saved![0].Should().BeEquivalentTo(snippet);
+    }
+
+    [Test]
+    public async Task AddAsync_ExistingFile_AppendsToExistingSnippets()
+    {
+        // Arrange
+        var existing = new Snippet("ls -la", null, []);
+        var readStream = SnippetsToStream([existing]);
+        var writeStream = new NonDisposableMemoryStream();
+
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(true);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.OpenRead(StorePath))
+            .Returns(readStream);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.Create(StorePath))
+            .Returns(writeStream);
+
+        var newSnippet = new Snippet("git log --oneline", null, ["git"]);
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+
+        // Act
+        await sut.AddAsync(newSnippet, CancellationToken.None);
+
+        // Assert
+        writeStream.Position = 0;
+        var saved = await JsonSerializer.DeserializeAsync(writeStream, SnippetJsonContext.Default.ListSnippet);
+        saved.Should().HaveCount(2);
+        saved.Should().ContainEquivalentOf(existing);
+        saved.Should().ContainEquivalentOf(newSnippet);
+    }
+
+    [Test]
+    public async Task AddAsync_Always_EnsuresDirectoryExists()
+    {
+        // Arrange
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(false);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.Create(StorePath))
+            .Returns(new NonDisposableMemoryStream());
+
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+        var snippet = new Snippet("docker ps", null, []);
+
+        // Act
+        await sut.AddAsync(snippet, CancellationToken.None);
+
+        // Assert
+        _mocker.GetMock<IFileSystem>()
+            .Verify(f => f.CreateDirectory(It.IsAny<string>()), Times.Once);
+    }
+
+    private static MemoryStream SnippetsToStream(List<Snippet> snippets)
+    {
+        var json = JsonSerializer.Serialize(snippets, SnippetJsonContext.Default.ListSnippet);
+        return new MemoryStream(Encoding.UTF8.GetBytes(json));
+    }
+
+    // MemoryStream disposes itself when used in `await using` — suppress it so tests can read the result.
+    private sealed class NonDisposableMemoryStream : MemoryStream
+    {
+        protected override void Dispose(bool disposing) { }
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}

@@ -2,6 +2,10 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSnip", "src\CSnip\CSnip.csproj", "{51026DFF-D290-483A-9952-9715FA19444D}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{00DC0F18-56FC-4311-BCD9-00588CDBACEA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSnip.Tests", "tests\CSnip.Tests\CSnip.Tests.csproj", "{15AC58EB-7C10-408F-BF5E-3E1580A3BD93}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +16,12 @@ Global
 		{51026DFF-D290-483A-9952-9715FA19444D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{51026DFF-D290-483A-9952-9715FA19444D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{51026DFF-D290-483A-9952-9715FA19444D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{15AC58EB-7C10-408F-BF5E-3E1580A3BD93}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15AC58EB-7C10-408F-BF5E-3E1580A3BD93}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15AC58EB-7C10-408F-BF5E-3E1580A3BD93}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15AC58EB-7C10-408F-BF5E-3E1580A3BD93}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{15AC58EB-7C10-408F-BF5E-3E1580A3BD93} = {00DC0F18-56FC-4311-BCD9-00588CDBACEA}
 	EndGlobalSection
 EndGlobal
