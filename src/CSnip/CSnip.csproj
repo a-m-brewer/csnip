@@ -19,7 +19,7 @@
       <PackageReference Include="TextCopy" Version="6.2.1" />
     </ItemGroup>
 
-    <ItemGroup>
+    <ItemGroup Condition="'$(Configuration)' != 'Release'">
       <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
       <Content Include="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>

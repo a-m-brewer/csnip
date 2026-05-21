@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Spectre.Console;
@@ -6,6 +7,7 @@ using CSnip.Abstractions;
 using CSnip.Extensions;
 using CSnip.Handlers;
 using CSnip.Models.Settings;
+using CSnip.Persistence;
 using CSnip.Pipeline;
 
 // Capture console state before any redirection.
@@ -28,8 +30,20 @@ var ansiConsole = isInputRedirected
 
 var consoleEnv = new ConsoleEnvironmentAbstraction(isInputRedirected, isOutputRedirected, pipeReader, Console.Out);
 
+// Bootstrap the user config before the host is built so the path is available
+// for AddJsonFile. The same instance is registered in DI for testability.
+var userConfigInit = new UserConfigInitialiser(new PhysicalFileSystem());
+userConfigInit.EnsureInitialised();
+
 // Set DOTNET_ENVIRONMENT=Development to activate appsettings.Development.json and debug-level logging.
 var builder = Host.CreateApplicationBuilder();
+
+// Load user config after the binary-adjacent appsettings.json so it takes priority.
+// Ssh.Programs dictionaries from both files are merged (different keys survive from each
+// file; same key in user config wins). Follows the ansible / docker convention where the
+// more-local config overrides the installed defaults.
+builder.Configuration.AddJsonFile(userConfigInit.ConfigPath, optional: true, reloadOnChange: false);
+builder.Services.AddSingleton<IUserConfigInitialiser>(userConfigInit);
 
 // Suppress "Application started / stopped" messages from the host lifetime.
 builder.Services.Configure<ConsoleLifetimeOptions>(opts => opts.SuppressStatusMessages = true);
