@@ -69,6 +69,11 @@ var execCommand = new Command("exec", "Execute a snippet in a shell");
 execCommand.SetActionHandler<ExecCommandHandler, ExecCommandHandler.Symbols>(host.Services);
 rootCommand.Add(execCommand);
 
+// ssh command: selects a snippet and executes it on remote hosts via SSH.
+var sshCommand = new Command("ssh", "Execute a snippet on remote hosts via SSH");
+sshCommand.SetActionHandler<SshCommandHandler, SshCommandHandler.Symbols>(host.Services);
+rootCommand.Add(sshCommand);
+
 return await rootCommand
     .Parse(args)
     .InvokeAsync(new InvocationConfiguration { EnableDefaultExceptionHandler = true });
