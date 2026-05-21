@@ -2,9 +2,11 @@ using AwesomeAssertions;
 using CSnip.Abstractions;
 using CSnip.Handlers;
 using CSnip.Models;
+using CSnip.Models.Settings;
 using CSnip.Persistence;
 using CSnip.Pipeline;
 using CSnip.Services;
+using Microsoft.Extensions.Options;
 using Moq;
 using Moq.AutoMock;
 using Spectre.Console;
@@ -24,6 +26,7 @@ public class SshCommandHandlerTests
         _mocker = new AutoMocker();
         _mocker.GetMock<IConsoleEnvironment>()
             .Setup(e => e.IsInputRedirected).Returns(false);
+        _mocker.Use<IOptions<SshSettings>>(Options.Create(new SshSettings()));
     }
 
     private static ParseResult BuildParseResult(params string[] args)
@@ -33,6 +36,23 @@ public class SshCommandHandlerTests
         foreach (var arg in symbols.Arguments) command.Add(arg);
         foreach (var opt in symbols.Options) command.Add(opt);
         return command.Parse(args);
+    }
+
+    private void UseSettings(SshSettings settings) =>
+        _mocker.Use<IOptions<SshSettings>>(Options.Create(settings));
+
+    private void SetupSnippetAndOrchestrator(string snippetCommand, string resolvedCommand)
+    {
+        IReadOnlyList<Snippet> snippets = [new Snippet(snippetCommand, null, [])];
+        _mocker.GetMock<ISnippetRepository>()
+            .Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snippets);
+        _mocker.GetMock<ISnippetSelectionOrchestrator>()
+            .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(resolvedCommand);
+        _mocker.GetMock<IShellExecutor>()
+            .Setup(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
     }
 
     // ── non-redirected ────────────────────────────────────────────────────────
@@ -274,6 +294,162 @@ public class SshCommandHandlerTests
         result.Should().Be(0);
         _mocker.GetMock<IShellExecutor>()
             .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── --ssh-program ─────────────────────────────────────────────────────────
+
+    [Test]
+    public async Task HandleAsync_WithSshProgram_UsesSpecifiedProgramForAllHosts()
+    {
+        SetupSnippetAndOrchestrator("uptime", "uptime");
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("vm1", "vm2", "--ssh-program", "hvc ssh"), CancellationToken.None);
+
+        result.Should().Be(0);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("hvc ssh vm2 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task HandleAsync_WithSshProgram_PerHostSshPrefixForcesPlainSsh()
+    {
+        SetupSnippetAndOrchestrator("uptime", "uptime");
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("vm1", "ssh:jumpbox", "--ssh-program", "hvc ssh"), CancellationToken.None);
+
+        result.Should().Be(0);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("ssh jumpbox 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── --profile ─────────────────────────────────────────────────────────────
+
+    [Test]
+    public async Task HandleAsync_WithProfile_UsesConfiguredProgram()
+    {
+        UseSettings(new SshSettings { Programs = new Dictionary<string, string> { ["hvc"] = "hvc ssh" } });
+        SetupSnippetAndOrchestrator("uptime", "uptime");
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("vm1", "--profile", "hvc"), CancellationToken.None);
+
+        result.Should().Be(0);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task HandleAsync_WithUnknownProfile_ReturnsOneWithError()
+    {
+        var console = new TestConsole();
+        _mocker.Use<IAnsiConsole>(console);
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("vm1", "--profile", "nonexistent"), CancellationToken.None);
+
+        result.Should().Be(1);
+        console.Output.Should().Contain("nonexistent");
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task HandleAsync_SshProgramAndProfileBothSet_ReturnsOneWithError()
+    {
+        var console = new TestConsole();
+        _mocker.Use<IAnsiConsole>(console);
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(
+            BuildParseResult("vm1", "--ssh-program", "hvc ssh", "--profile", "hvc"),
+            CancellationToken.None);
+
+        result.Should().Be(1);
+        console.Output.Should().Contain("mutually exclusive");
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── per-host prefix ───────────────────────────────────────────────────────
+
+    [Test]
+    public async Task HandleAsync_PerHostConfigAlias_UsesAliasProgram()
+    {
+        UseSettings(new SshSettings { Programs = new Dictionary<string, string> { ["hvc"] = "hvc ssh" } });
+        SetupSnippetAndOrchestrator("uptime", "uptime");
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("hvc:vm1"), CancellationToken.None);
+
+        result.Should().Be(0);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task HandleAsync_PerHostSshAlias_ForcesPlainSsh()
+    {
+        SetupSnippetAndOrchestrator("uptime", "uptime");
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("ssh:user@host"), CancellationToken.None);
+
+        result.Should().Be(0);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("ssh user@host 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task HandleAsync_PerHostUnknownAlias_ReturnsOneWithError()
+    {
+        var console = new TestConsole();
+        _mocker.Use<IAnsiConsole>(console);
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("unknown:vm1"), CancellationToken.None);
+
+        result.Should().Be(1);
+        console.Output.Should().Contain("unknown");
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task HandleAsync_MixedPrefixedAndPlainHosts_UsesCorrectProgramPerHost()
+    {
+        UseSettings(new SshSettings { Programs = new Dictionary<string, string> { ["hvc"] = "hvc ssh" } });
+        SetupSnippetAndOrchestrator("uptime", "uptime");
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("hvc:vm1", "user@server2", "ssh:jumpbox"), CancellationToken.None);
+
+        result.Should().Be(0);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("ssh user@server2 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("ssh jumpbox 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task HandleAsync_UserAtHostNotTreatedAsPrefix()
+    {
+        // "user@host" has no colon so it must never trigger alias resolution
+        SetupSnippetAndOrchestrator("uptime", "uptime");
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("user@host"), CancellationToken.None);
+
+        result.Should().Be(0);
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync("ssh user@host 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── piped input ───────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ var builder = Host.CreateApplicationBuilder();
 // Suppress "Application started / stopped" messages from the host lifetime.
 builder.Services.Configure<ConsoleLifetimeOptions>(opts => opts.SuppressStatusMessages = true);
 builder.Services.Configure<StoreSettings>(builder.Configuration.GetSection("Store"));
+builder.Services.Configure<SshSettings>(builder.Configuration.GetSection("Ssh"));
 
 // Spectre.Console — IAnsiConsole is the primary output abstraction for command handlers.
 builder.Services.AddSingleton(ansiConsole);
