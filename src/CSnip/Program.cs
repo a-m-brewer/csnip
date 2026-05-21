@@ -40,6 +40,7 @@ builder.Services.AddSingleton(ansiConsole);
 builder.Services.AddSingleton<IConsoleEnvironment>(consoleEnv);
 
 builder.Services.AddSingleton<IClipboardService, ClipboardServiceAbstraction>();
+builder.Services.AddSingleton<IShellExecutor, ShellExecutor>();
 
 builder.Services.AddCommandHandlers();
 
@@ -61,8 +62,12 @@ rootCommand.Add(listCommand);
 // copy command: prompts for text and copies it to the clipboard.
 var copyCommand = new Command("copy", "Copy text to the clipboard");
 copyCommand.SetActionHandler<CopyCommandHandler, CopyCommandHandler.Symbols>(host.Services);
-
 rootCommand.Add(copyCommand);
+
+// exec command: selects a snippet and executes it in a shell.
+var execCommand = new Command("exec", "Execute a snippet in a shell");
+execCommand.SetActionHandler<ExecCommandHandler, ExecCommandHandler.Symbols>(host.Services);
+rootCommand.Add(execCommand);
 
 return await rootCommand
     .Parse(args)
