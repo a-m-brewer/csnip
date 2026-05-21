@@ -7,4 +7,6 @@ public interface ISnippetSelectionOrchestrator
     Task<string?> ResolveSnippetCommandAsync(
         IEnumerable<Snippet> snippets,
         CancellationToken cancellationToken);
+
+    Task<string?> ResolveCommandAsync(Snippet snippet, CancellationToken cancellationToken);
 }

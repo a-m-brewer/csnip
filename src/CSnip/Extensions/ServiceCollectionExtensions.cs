@@ -2,6 +2,7 @@ using CSnip.Abstractions;
 using CSnip.Handlers;
 using CSnip.Models.Settings;
 using CSnip.Persistence;
+using CSnip.Pipeline;
 using CSnip.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,6 +16,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileSystem, PhysicalFileSystem>();
         services.AddSingleton<ISnippetRepository, SnippetRepository>();
         services.AddOptions<StoreSettings>();
+
+        services.AddSingleton<IPipelineReader, PipelineReader>();
+        services.AddSingleton<IPipelineWriter, PipelineWriter>();
+        services.AddSingleton<FormatResolver>();
 
         services.AddTransient<ITemplateService, TemplateService>();
         services.AddTransient<ISnippetPromptService, SpectreSnippetPromptService>();

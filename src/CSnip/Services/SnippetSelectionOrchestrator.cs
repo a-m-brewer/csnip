@@ -14,10 +14,15 @@ public class SnippetSelectionOrchestrator(
         var selected = await snippetPromptService.SelectSnippetAsync(snippets, cancellationToken);
         if (selected is null) return null;
 
-        var templates = templateService.ParseTemplates(selected.Command);
-        if (templates.Count == 0) return selected.Command;
+        return await ResolveCommandAsync(selected, cancellationToken);
+    }
+
+    public async Task<string?> ResolveCommandAsync(Snippet snippet, CancellationToken cancellationToken)
+    {
+        var templates = templateService.ParseTemplates(snippet.Command);
+        if (templates.Count == 0) return snippet.Command;
 
         var values = await templatePromptService.PromptForTemplatesAsync(templates, cancellationToken);
-        return templateService.ApplyTemplates(selected.Command, values);
+        return templateService.ApplyTemplates(snippet.Command, values);
     }
 }
