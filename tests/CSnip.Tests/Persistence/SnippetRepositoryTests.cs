@@ -105,6 +105,124 @@ public class SnippetRepositoryTests
     }
 
     [Test]
+    public async Task UpdateAsync_ExistingSnippet_ReplacesMatchingSnippet()
+    {
+        // Arrange
+        var existing = new Snippet("git status", "Check repo status", ["git"]);
+        var other = new Snippet("docker ps", null, ["docker"]);
+        var readStream = SnippetsToStream([existing, other]);
+        var writeStream = new NonDisposableMemoryStream();
+
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(true);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.OpenRead(StorePath))
+            .Returns(readStream);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.Create(StorePath))
+            .Returns(writeStream);
+
+        var equivalentExisting = new Snippet("git status", "Check repo status", ["git"]);
+        var updated = new Snippet("git status --short", "Short repo status", ["git", "vcs"]);
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+
+        // Act
+        var result = await sut.UpdateAsync(equivalentExisting, updated, CancellationToken.None);
+
+        // Assert
+        result.Should().BeTrue();
+        writeStream.Position = 0;
+        var saved = await JsonSerializer.DeserializeAsync(writeStream, SnippetJsonContext.Default.ListSnippet);
+        saved.Should().BeEquivalentTo(new[] { updated, other }, options => options.WithStrictOrdering());
+    }
+
+    [Test]
+    public async Task UpdateAsync_MissingSnippet_ReturnsFalseWithoutWriting()
+    {
+        // Arrange
+        var existing = new Snippet("git status", null, ["git"]);
+        var readStream = SnippetsToStream([existing]);
+
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(true);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.OpenRead(StorePath))
+            .Returns(readStream);
+
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+
+        // Act
+        var result = await sut.UpdateAsync(
+            new Snippet("docker ps", null, ["docker"]),
+            new Snippet("docker ps -a", null, ["docker"]),
+            CancellationToken.None);
+
+        // Assert
+        result.Should().BeFalse();
+        _mocker.GetMock<IFileSystem>()
+            .Verify(f => f.Create(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public async Task DeleteAsync_ExistingSnippet_RemovesMatchingSnippet()
+    {
+        // Arrange
+        var target = new Snippet("git status", "Check repo status", ["git"]);
+        var other = new Snippet("docker ps", null, ["docker"]);
+        var readStream = SnippetsToStream([target, other]);
+        var writeStream = new NonDisposableMemoryStream();
+
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(true);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.OpenRead(StorePath))
+            .Returns(readStream);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.Create(StorePath))
+            .Returns(writeStream);
+
+        var equivalentTarget = new Snippet("git status", "Check repo status", ["git"]);
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+
+        // Act
+        var result = await sut.DeleteAsync(equivalentTarget, CancellationToken.None);
+
+        // Assert
+        result.Should().BeTrue();
+        writeStream.Position = 0;
+        var saved = await JsonSerializer.DeserializeAsync(writeStream, SnippetJsonContext.Default.ListSnippet);
+        saved.Should().BeEquivalentTo(new[] { other }, options => options.WithStrictOrdering());
+    }
+
+    [Test]
+    public async Task DeleteAsync_MissingSnippet_ReturnsFalseWithoutWriting()
+    {
+        // Arrange
+        var existing = new Snippet("git status", null, ["git"]);
+        var readStream = SnippetsToStream([existing]);
+
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.FileExists(StorePath))
+            .Returns(true);
+        _mocker.GetMock<IFileSystem>()
+            .Setup(f => f.OpenRead(StorePath))
+            .Returns(readStream);
+
+        var sut = _mocker.CreateInstance<SnippetRepository>();
+
+        // Act
+        var result = await sut.DeleteAsync(new Snippet("docker ps", null, ["docker"]), CancellationToken.None);
+
+        // Assert
+        result.Should().BeFalse();
+        _mocker.GetMock<IFileSystem>()
+            .Verify(f => f.Create(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
     public async Task GetAllAsync_NoExistingFile_ReturnsEmptyList()
     {
         _mocker.GetMock<IFileSystem>()

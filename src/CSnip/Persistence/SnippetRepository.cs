@@ -21,6 +21,30 @@ public class SnippetRepository(IFileSystem fileSystem, IOptions<StoreSettings> o
         return await LoadAsync(cancellationToken);
     }
 
+    public async Task<bool> UpdateAsync(Snippet existingSnippet, Snippet updatedSnippet, CancellationToken cancellationToken)
+    {
+        var snippets = await LoadAsync(cancellationToken);
+        var index = snippets.FindIndex(snippet => SnippetsEqual(snippet, existingSnippet));
+        if (index < 0)
+            return false;
+
+        snippets[index] = updatedSnippet;
+        await SaveAsync(snippets, cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> DeleteAsync(Snippet snippet, CancellationToken cancellationToken)
+    {
+        var snippets = await LoadAsync(cancellationToken);
+        var index = snippets.FindIndex(candidate => SnippetsEqual(candidate, snippet));
+        if (index < 0)
+            return false;
+
+        snippets.RemoveAt(index);
+        await SaveAsync(snippets, cancellationToken);
+        return true;
+    }
+
     private async Task<List<Snippet>> LoadAsync(CancellationToken cancellationToken)
     {
         if (!fileSystem.FileExists(StorePath))
@@ -42,5 +66,12 @@ public class SnippetRepository(IFileSystem fileSystem, IOptions<StoreSettings> o
             snippets,
             SnippetJsonContext.Default.ListSnippet,
             cancellationToken);
+    }
+
+    private static bool SnippetsEqual(Snippet left, Snippet right)
+    {
+        return left.Command == right.Command &&
+               left.Description == right.Description &&
+               left.Tags.SequenceEqual(right.Tags);
     }
 }

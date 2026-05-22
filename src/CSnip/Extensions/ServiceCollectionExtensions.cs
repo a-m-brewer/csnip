@@ -27,6 +27,8 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ISnippetSelectionOrchestrator, SnippetSelectionOrchestrator>();
 
         services.AddTransient<AddCommandHandler>();
+        services.AddTransient<EditCommandHandler>();
+        services.AddTransient<DeleteCommandHandler>();
         services.AddTransient<CopyCommandHandler>();
         services.AddTransient<ExecCommandHandler>();
         services.AddTransient<ListCommandHandler>();

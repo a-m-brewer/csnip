@@ -4,11 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this project is
 
-`csnip` is a CLI tool for managing reusable code/command snippets. It stores snippets as JSON and provides three commands:
+`csnip` is a CLI tool for managing reusable code/command snippets. It stores snippets as JSON and provides commands for common snippet workflows:
 
 - `csnip add [command] [--description|-d <desc>] [--tags|-t <tag>...]` — save a snippet (interactive prompts if args omitted)
+- `csnip edit [command] [--description|-d <desc>] [--tags|-t <tag>...]` — select an existing snippet and update its fields
+- `csnip delete` — select an existing snippet and delete it
 - `csnip list [--format json|text|auto]` — list all snippets; pipe-friendly (auto-detects TTY vs redirected)
 - `csnip copy` — interactively select a snippet and copy it to the clipboard; accepts piped NDJSON or bare command strings on stdin
+- `csnip exec` — interactively select a snippet and execute it in a shell; accepts piped NDJSON or bare command strings on stdin
+- `csnip ssh <hosts>` — interactively select a snippet and execute it on one or more remote hosts via SSH
 
 Snippets support a template syntax: `<key>` or `<key=default>` placeholders that get filled in at copy time via Spectre prompts.
 

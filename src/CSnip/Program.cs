@@ -69,6 +69,16 @@ var addCommand = new Command("add", "Add a new code snippet");
 addCommand.SetActionHandler<AddCommandHandler, AddCommandHandler.Symbols>(host.Services);
 rootCommand.Add(addCommand);
 
+// edit command: selects an existing command and updates the stored snippet fields
+var editCommand = new Command("edit", "Edit an existing code snippet");
+editCommand.SetActionHandler<EditCommandHandler, EditCommandHandler.Symbols>(host.Services);
+rootCommand.Add(editCommand);
+
+// delete command: selects an existing command and removes it from the store
+var deleteCommand = new Command("delete", "Delete an existing code snippet");
+deleteCommand.SetActionHandler<DeleteCommandHandler, DeleteCommandHandler.Symbols>(host.Services);
+rootCommand.Add(deleteCommand);
+
 // list command: list all snippets, pipe-friendly
 var listCommand = new Command("list", "List all snippets");
 listCommand.SetActionHandler<ListCommandHandler, ListCommandHandler.Symbols>(host.Services);
