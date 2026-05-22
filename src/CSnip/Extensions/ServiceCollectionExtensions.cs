@@ -26,10 +26,11 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ITemplatePromptService, SpectreTemplatePromptService>();
         services.AddTransient<ISnippetSelectionOrchestrator, SnippetSelectionOrchestrator>();
 
-        services.Scan(s => s.FromAssemblyOf<ICliCommandHandler>()
-            .AddClasses(c => c.AssignableTo<ICliCommandHandler>())
-            .AsSelfWithInterfaces()
-            .WithTransientLifetime());
+        services.AddTransient<AddCommandHandler>();
+        services.AddTransient<CopyCommandHandler>();
+        services.AddTransient<ExecCommandHandler>();
+        services.AddTransient<ListCommandHandler>();
+        services.AddTransient<SshCommandHandler>();
 
         return services;
     }

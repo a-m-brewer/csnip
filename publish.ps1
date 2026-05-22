@@ -3,7 +3,8 @@
 
 param(
     [string]$Runtime,
-    [string]$OutputDir = "$PSScriptRoot/publish"
+    [string]$OutputDir = "$PSScriptRoot/publish",
+    [switch]$NoRuntimeDirectory
 )
 
 $project = "$PSScriptRoot/src/CSnip/CSnip.csproj"
@@ -20,17 +21,21 @@ if (-not $Runtime) {
     }
 }
 
-$runtimeOutputDir = Join-Path $OutputDir $Runtime
+$publishOutputDir = if ($NoRuntimeDirectory) {
+    $OutputDir
+} else {
+    Join-Path $OutputDir $Runtime
+}
 
 Write-Host "Publishing $project" -ForegroundColor Cyan
 Write-Host "  Runtime  : $Runtime"
-Write-Host "  Output   : $runtimeOutputDir"
+Write-Host "  Output   : $publishOutputDir"
 
 dotnet publish $project `
     --configuration Release `
     --runtime $Runtime `
     --self-contained true `
-    --output $runtimeOutputDir `
+    --output $publishOutputDir `
     -p:PublishAot=true
 
 if ($LASTEXITCODE -ne 0) {
@@ -38,7 +43,7 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-$binary = Get-ChildItem $runtimeOutputDir -File |
+$binary = Get-ChildItem $publishOutputDir -File |
     Where-Object { $_.Name -like "csnip*" -and $_.Extension -notin @('.json', '.pdb', '.dbg', '.dsym') } |
     Select-Object -First 1
 
