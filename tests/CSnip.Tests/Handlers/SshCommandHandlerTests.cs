@@ -41,6 +41,36 @@ public class SshCommandHandlerTests
     private void UseSettings(SshSettings settings) =>
         _mocker.Use<IOptions<SshSettings>>(Options.Create(settings));
 
+    private void SetupAnyProcessExecution(int exitCode = 0) =>
+        _mocker.GetMock<IShellExecutor>()
+            .Setup(s => s.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(exitCode);
+
+    private void SetupProcessExecution(string fileName, int exitCode, params string[] arguments) =>
+        _mocker.GetMock<IShellExecutor>()
+            .Setup(s => s.ExecuteAsync(
+                fileName,
+                It.Is<IReadOnlyList<string>>(actual => actual.SequenceEqual(arguments)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(exitCode);
+
+    private void VerifyProcessExecution(string fileName, Times times, params string[] arguments) =>
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync(
+                fileName,
+                It.Is<IReadOnlyList<string>>(actual => actual.SequenceEqual(arguments)),
+                It.IsAny<CancellationToken>()), times);
+
+    private void VerifyNoProcessExecution() =>
+        _mocker.GetMock<IShellExecutor>()
+            .Verify(s => s.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+
     private void SetupSnippetAndOrchestrator(string snippetCommand, string resolvedCommand)
     {
         IReadOnlyList<Snippet> snippets = [new Snippet(snippetCommand, null, [])];
@@ -50,9 +80,7 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolvedCommand);
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupAnyProcessExecution();
     }
 
     // ── non-redirected ────────────────────────────────────────────────────────
@@ -68,8 +96,7 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("host1"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        VerifyNoProcessExecution();
     }
 
     [Test]
@@ -82,16 +109,13 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync("git status");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync("ssh user@host1 'git status'", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupProcessExecution("ssh", 0, "user@host1", "git status");
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult("user@host1"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh user@host1 'git status'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("ssh", Times.Once(), "user@host1", "git status");
     }
 
     [Test]
@@ -104,18 +128,14 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync("uptime");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupAnyProcessExecution();
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult("host1", "host2"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh host1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh host2 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("ssh", Times.Once(), "host1", "uptime");
+        VerifyProcessExecution("ssh", Times.Once(), "host2", "uptime");
     }
 
     [Test]
@@ -129,17 +149,14 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync("uptime");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupAnyProcessExecution();
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         // host1 -o BatchMode=yes → host1 is the host, -o BatchMode=yes are SSH args
         var result = await sut.HandleAsync(BuildParseResult("host1", "-o", "BatchMode=yes"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh '-o' 'BatchMode=yes' host1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("ssh", Times.Once(), "-o", "BatchMode=yes", "host1", "uptime");
     }
 
     // ── headers ───────────────────────────────────────────────────────────────
@@ -156,9 +173,7 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync("uptime");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupAnyProcessExecution();
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         await sut.HandleAsync(BuildParseResult("host1"), CancellationToken.None);
@@ -178,9 +193,7 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync("uptime");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupAnyProcessExecution();
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         await sut.HandleAsync(BuildParseResult("host1", "host2"), CancellationToken.None);
@@ -201,9 +214,7 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync("uptime");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupAnyProcessExecution();
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         await sut.HandleAsync(BuildParseResult("host1", "host2", "--no-header"), CancellationToken.None);
@@ -219,8 +230,7 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("-o", "BatchMode=yes"), CancellationToken.None);
 
         result.Should().Be(1);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        VerifyNoProcessExecution();
     }
 
     [Test]
@@ -235,9 +245,7 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync("false");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
+        SetupAnyProcessExecution(1);
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult("host1"), CancellationToken.None);
@@ -258,20 +266,15 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(snippets, It.IsAny<CancellationToken>()))
             .ReturnsAsync("uptime");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync("ssh host1 'uptime'", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(255);
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync("ssh host2 'uptime'", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupProcessExecution("ssh", 255, "host1", "uptime");
+        SetupProcessExecution("ssh", 0, "host2", "uptime");
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult("host1", "host2"), CancellationToken.None);
 
         result.Should().Be(255);
         // host2 still ran despite host1 failing
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh host2 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("ssh", Times.Once(), "host2", "uptime");
         // failure summary mentions the failed host
         console.Output.Should().Contain("host1");
         console.Output.Should().Contain("255");
@@ -292,8 +295,7 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("host1"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        VerifyNoProcessExecution();
     }
 
     // ── --ssh-program ─────────────────────────────────────────────────────────
@@ -307,10 +309,8 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("vm1", "vm2", "--ssh-program", "hvc ssh"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("hvc ssh vm2 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("hvc", Times.Once(), "ssh", "vm1", "uptime");
+        VerifyProcessExecution("hvc", Times.Once(), "ssh", "vm2", "uptime");
     }
 
     [Test]
@@ -322,10 +322,8 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("vm1", "ssh:jumpbox", "--ssh-program", "hvc ssh"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh jumpbox 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("hvc", Times.Once(), "ssh", "vm1", "uptime");
+        VerifyProcessExecution("ssh", Times.Once(), "jumpbox", "uptime");
     }
 
     // ── --profile ─────────────────────────────────────────────────────────────
@@ -340,8 +338,20 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("vm1", "--profile", "hvc"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("hvc", Times.Once(), "ssh", "vm1", "uptime");
+    }
+
+    [Test]
+    public async Task HandleAsync_WithProfile_PassesRemoteCommandWithSpacesAsSingleArgument()
+    {
+        UseSettings(new SshSettings { Programs = new Dictionary<string, string> { ["hvc"] = "hvc ssh" } });
+        SetupSnippetAndOrchestrator("uname -r", "uname -r");
+
+        var sut = _mocker.CreateInstance<SshCommandHandler>();
+        var result = await sut.HandleAsync(BuildParseResult("root@anm-linux", "--profile", "hvc"), CancellationToken.None);
+
+        result.Should().Be(0);
+        VerifyProcessExecution("hvc", Times.Once(), "ssh", "root@anm-linux", "uname -r");
     }
 
     [Test]
@@ -355,8 +365,7 @@ public class SshCommandHandlerTests
 
         result.Should().Be(1);
         console.Output.Should().Contain("nonexistent");
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        VerifyNoProcessExecution();
     }
 
     [Test]
@@ -372,8 +381,7 @@ public class SshCommandHandlerTests
 
         result.Should().Be(1);
         console.Output.Should().Contain("mutually exclusive");
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        VerifyNoProcessExecution();
     }
 
     // ── per-host prefix ───────────────────────────────────────────────────────
@@ -388,8 +396,7 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("hvc:vm1"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("hvc", Times.Once(), "ssh", "vm1", "uptime");
     }
 
     [Test]
@@ -401,8 +408,7 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("ssh:user@host"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh user@host 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("ssh", Times.Once(), "user@host", "uptime");
     }
 
     [Test]
@@ -416,8 +422,7 @@ public class SshCommandHandlerTests
 
         result.Should().Be(1);
         console.Output.Should().Contain("unknown");
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        VerifyNoProcessExecution();
     }
 
     [Test]
@@ -430,12 +435,9 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("hvc:vm1", "user@server2", "ssh:jumpbox"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("hvc ssh vm1 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh user@server2 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh jumpbox 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("hvc", Times.Once(), "ssh", "vm1", "uptime");
+        VerifyProcessExecution("ssh", Times.Once(), "user@server2", "uptime");
+        VerifyProcessExecution("ssh", Times.Once(), "jumpbox", "uptime");
     }
 
     [Test]
@@ -448,8 +450,7 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("user@host"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh user@host 'uptime'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("ssh", Times.Once(), "user@host", "uptime");
     }
 
     // ── piped input ───────────────────────────────────────────────────────────
@@ -472,8 +473,7 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("host1"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        VerifyNoProcessExecution();
     }
 
     [Test]
@@ -484,16 +484,13 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveCommandAsync(snippet, It.IsAny<CancellationToken>()))
             .ReturnsAsync("git status");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync("ssh host1 'git status'", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupProcessExecution("ssh", 0, "host1", "git status");
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult("host1"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh host1 'git status'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("ssh", Times.Once(), "host1", "git status");
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Verify(o => o.ResolveSnippetCommandAsync(It.IsAny<IEnumerable<Snippet>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -511,8 +508,7 @@ public class SshCommandHandlerTests
         var result = await sut.HandleAsync(BuildParseResult("host1"), CancellationToken.None);
 
         result.Should().Be(0);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        VerifyNoProcessExecution();
     }
 
     [Test]
@@ -527,9 +523,7 @@ public class SshCommandHandlerTests
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Setup(o => o.ResolveSnippetCommandAsync(candidates, It.IsAny<CancellationToken>()))
             .ReturnsAsync("git status");
-        _mocker.GetMock<IShellExecutor>()
-            .Setup(s => s.ExecuteAsync("ssh host1 'git status'", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0);
+        SetupProcessExecution("ssh", 0, "host1", "git status");
 
         var sut = _mocker.CreateInstance<SshCommandHandler>();
         var result = await sut.HandleAsync(BuildParseResult("host1"), CancellationToken.None);
@@ -537,8 +531,7 @@ public class SshCommandHandlerTests
         result.Should().Be(0);
         _mocker.GetMock<ISnippetSelectionOrchestrator>()
             .Verify(o => o.ResolveSnippetCommandAsync(candidates, It.IsAny<CancellationToken>()), Times.Once);
-        _mocker.GetMock<IShellExecutor>()
-            .Verify(s => s.ExecuteAsync("ssh host1 'git status'", It.IsAny<CancellationToken>()), Times.Once);
+        VerifyProcessExecution("ssh", Times.Once(), "host1", "git status");
     }
 
     [Test]

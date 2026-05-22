@@ -7,6 +7,7 @@ using CSnip.Pipeline;
 using CSnip.Services;
 using Microsoft.Extensions.Options;
 using Spectre.Console;
+using System.Text;
 
 namespace CSnip.Handlers;
 
@@ -184,19 +185,27 @@ public class SshCommandHandler(
         bool showHeaders,
         CancellationToken cancellationToken)
     {
-        var quotedCommand = "'" + command.Replace("'", "'\\''") + "'";
-        var extraArgsPart = extraSshArgs.Count > 0
-            ? string.Join(" ", extraSshArgs.Select(QuoteArgForShell)) + " "
-            : "";
-
         var failures = new List<(string Host, int ExitCode)>();
         foreach (var entry in hostEntries)
         {
             if (showHeaders)
                 console.Write(new Rule($"[blue]{Markup.Escape(entry.Host)}[/]"));
 
-            var sshCommand = $"{entry.Program} {extraArgsPart}{entry.Host} {quotedCommand}";
-            var code = await shellExecutor.ExecuteAsync(sshCommand, cancellationToken);
+            if (!TrySplitProgram(entry.Program, out var programParts, out var error))
+            {
+                console.MarkupLine($"[red]{Markup.Escape(error!)}[/]");
+                failures.Add((entry.Host, 1));
+                continue;
+            }
+
+            var fileName = programParts[0];
+            var arguments = new List<string>(programParts.Count - 1 + extraSshArgs.Count + 2);
+            arguments.AddRange(programParts.Skip(1));
+            arguments.AddRange(extraSshArgs);
+            arguments.Add(entry.Host);
+            arguments.Add(command);
+
+            var code = await shellExecutor.ExecuteAsync(fileName, arguments, cancellationToken);
             if (code != 0)
                 failures.Add((entry.Host, code));
         }
@@ -212,6 +221,71 @@ public class SshCommandHandler(
         return 0;
     }
 
-    private static string QuoteArgForShell(string arg) =>
-        "'" + arg.Replace("'", "'\\''") + "'";
+    private static bool TrySplitProgram(string program, out IReadOnlyList<string> parts, out string? error)
+    {
+        var result = new List<string>();
+        var current = new StringBuilder();
+        char? quote = null;
+
+        for (var i = 0; i < program.Length; i++)
+        {
+            var ch = program[i];
+
+            if (quote is not null)
+            {
+                if (ch == quote)
+                {
+                    quote = null;
+                }
+                else if (quote == '"' && ch == '\\' && i + 1 < program.Length && program[i + 1] is '"' or '\\')
+                {
+                    current.Append(program[++i]);
+                }
+                else
+                {
+                    current.Append(ch);
+                }
+
+                continue;
+            }
+
+            if (char.IsWhiteSpace(ch))
+            {
+                if (current.Length > 0)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+            }
+            else if (ch is '\'' or '"')
+            {
+                quote = ch;
+            }
+            else
+            {
+                current.Append(ch);
+            }
+        }
+
+        if (quote is not null)
+        {
+            parts = [];
+            error = $"Invalid SSH program '{program}': unmatched {quote} quote.";
+            return false;
+        }
+
+        if (current.Length > 0)
+            result.Add(current.ToString());
+
+        if (result.Count == 0)
+        {
+            parts = [];
+            error = "SSH program cannot be empty.";
+            return false;
+        }
+
+        parts = result;
+        error = null;
+        return true;
+    }
 }

@@ -6,6 +6,7 @@ namespace CSnip.Abstractions;
 public interface IShellExecutor
 {
     Task<int> ExecuteAsync(string command, CancellationToken cancellationToken = default);
+    Task<int> ExecuteAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken cancellationToken = default);
 }
 
 public class ShellExecutor : IShellExecutor
@@ -23,6 +24,24 @@ public class ShellExecutor : IShellExecutor
         };
         startInfo.ArgumentList.Add(flag);
         startInfo.ArgumentList.Add(command);
+
+        using var process = new Process { StartInfo = startInfo };
+
+        process.Start();
+        await process.WaitForExitAsync(cancellationToken);
+        return process.ExitCode;
+    }
+
+    public async Task<int> ExecuteAsync(string fileName, IReadOnlyList<string> arguments, CancellationToken cancellationToken = default)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            UseShellExecute = false,
+        };
+
+        foreach (var argument in arguments)
+            startInfo.ArgumentList.Add(argument);
 
         using var process = new Process { StartInfo = startInfo };
 
